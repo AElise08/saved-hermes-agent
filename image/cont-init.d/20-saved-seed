@@ -1,0 +1,37 @@
+#!/command/with-contenv sh
+# Seed the agent's home with Saved scripts and a plow.env the hermes uid can
+# read. s6 writes PLOW_* as 0600 root; send_chat.py runs as uid 10000.
+set -eu
+
+HOME=/var/lib/hermes
+install -d -o 10000 -g 10000 -m 0755 "$HOME/scripts"
+cp -a /opt/saved/scripts/. "$HOME/scripts/"
+chown -R 10000:10000 "$HOME/scripts"
+chmod 0755 "$HOME/scripts"/*.py 2>/dev/null || true
+
+install -d -o 10000 -g 10000 -m 0700 "$HOME/.saved"
+
+if [ -d "$HOME/.agent-index" ]; then
+  chown -R 10000:10000 "$HOME/.agent-index"
+fi
+if [ -f "$HOME/.agent-index-state.json" ]; then
+  chown 10000:10000 "$HOME/.agent-index-state.json"
+  chmod 0600 "$HOME/.agent-index-state.json"
+fi
+
+if [ ! -s "$HOME/.saved/plow.env" ]; then
+  {
+    printf 'PLOW_API_BASE=%s\n' "$(cat /run/s6/container_environment/PLOW_API_BASE 2>/dev/null || true)"
+    printf 'PLOW_AGENT_TOKEN=%s\n' "$(cat /run/s6/container_environment/PLOW_AGENT_TOKEN 2>/dev/null || true)"
+  } > "$HOME/.saved/plow.env"
+  chown 10000:10000 "$HOME/.saved/plow.env"
+  chmod 0600 "$HOME/.saved/plow.env"
+fi
+
+for f in notion-ideas.json saved-context.json weekly-picks.json saved-settings.json; do
+  if [ ! -f "$HOME/$f" ] && [ -f "/opt/saved/templates/$f" ]; then
+    cp "/opt/saved/templates/$f" "$HOME/$f"
+    chown 10000:10000 "$HOME/$f"
+    chmod 0644 "$HOME/$f"
+  fi
+done

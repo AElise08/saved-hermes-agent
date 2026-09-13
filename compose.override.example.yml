@@ -1,0 +1,13 @@
+# Copy to compose.override.yml (gitignored) after minting a line.
+# Timezone, weekly hour, and locale are owner-specific — do not assume a country.
+services:
+  agent:
+    environment:
+      AGENT_ID: saved
+      # IANA zone, e.g. America/Sao_Paulo, Europe/Lisbon, America/New_York
+      TZ: UTC
+      # Optional. Omit these to use the Plow default model.
+      # HERMES_PROVIDER: deepseek
+      # HERMES_MODEL: deepseek-flash
+      # DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      # NOTION_API_KEY: ${NOTION_API_KEY}

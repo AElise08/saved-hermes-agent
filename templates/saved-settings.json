@@ -1,0 +1,7 @@
+{
+  "timezone": "UTC",
+  "weekly_weekday": 6,
+  "weekly_hour": 14,
+  "weekly_window_minutes": 10,
+  "locale": "en"
+}
