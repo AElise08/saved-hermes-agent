@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Capture and organize ideas in the Saved Notion vault.
+"""Capture and organize ideas in the owner's vault.
 
-This script intentionally uses only the Python standard library. It reads
-NOTION_API_KEY from the process environment or the Hermes .env file and never
-prints the key.
+The owner chooses the backend at setup: their own Notion database, or a local
+JSON file on this machine. Never someone else's Notion.
+
+This script uses only the Python standard library. It never prints secrets.
 """
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ import sys
 import unicodedata
 import urllib.error
 import urllib.request
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -73,6 +75,7 @@ EASY_HINTS = ("ouvir", "ler", "assistir", "escutar", "verificar", "conferir", "1
 API_BASE = "https://api.notion.com/v1"
 VERSION = "2025-09-03"
 DEFAULT_CONFIG_NAME = "notion-ideas.json"
+LOCAL_VAULT_NAME = "vault.json"
 TITLE_PROP = "Name"
 CONTENT_PROP = "Conteúdo"
 STATUS_OPTIONS = ("Inbox", "Explorar", "Em andamento", "Concluída", "Arquivada")
@@ -193,6 +196,10 @@ def load_config() -> dict[str, str]:
         raise NotionError(0, "missing_config", f"Missing config: {path}") from exc
     except json.JSONDecodeError as exc:
         raise NotionError(0, "invalid_config", f"Invalid config: {path}") from exc
+    if not isinstance(config, dict):
+        raise NotionError(0, "invalid_config", f"Invalid config: {path}")
+    if is_local(config):
+        return {"backend": "local"}
     for field in ("database_id", "data_source_id"):
         if not config.get(field):
             raise NotionError(0, "invalid_config", f"Missing config field: {field}")
@@ -200,9 +207,58 @@ def load_config() -> dict[str, str]:
             raise NotionError(
                 0,
                 "needs_setup",
-                "Notion is not connected yet. Connect THIS owner's database, not a sample one.",
+                "No vault yet. This owner can choose local save, or connect THEIR Notion database.",
             )
+    config["backend"] = "notion"
     return config
+
+
+def is_local(config: dict[str, Any] | None = None) -> bool:
+    if config is None:
+        path = Path(os.environ.get("NOTION_IDEAS_CONFIG", str(hermes_home() / DEFAULT_CONFIG_NAME)))
+        if not path.exists():
+            return False
+        try:
+            config = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return False
+    return str((config or {}).get("backend") or "").strip().lower() == "local"
+
+
+def vault_path() -> Path:
+    custom = os.environ.get("SAVED_LOCAL_VAULT")
+    if custom:
+        return Path(custom)
+    return hermes_home() / ".saved" / LOCAL_VAULT_NAME
+
+
+def load_vault() -> list[dict[str, Any]]:
+    path = vault_path()
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    items = data.get("items") if isinstance(data, dict) else data
+    return list(items) if isinstance(items, list) else []
+
+
+def save_vault(items: list[dict[str, Any]]) -> None:
+    path = vault_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"items": items}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def new_local_id() -> str:
+    return "local-" + uuid.uuid4().hex
+
+
+def item_id(value: str) -> str:
+    raw = (value or "").strip()
+    if raw.startswith("local-"):
+        return raw
+    return notion_id(raw)
 
 
 def has_key() -> bool:
@@ -241,6 +297,17 @@ def setup_status() -> dict[str, Any]:
             config = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             config = {}
+    if is_local(config):
+        items = load_vault()
+        return {
+            "ready": True,
+            "backend": "local",
+            "has_token": False,
+            "vault_path": str(vault_path()),
+            "items": len(items),
+            "config_path": str(path),
+            "next": "Local vault is ready. Capture stays on this machine; it does not use anyone else's Notion.",
+        }
     db = str(config.get("database_id") or "")
     ds = str(config.get("data_source_id") or "")
     placeholder = (not db) or db.startswith("REPLACE_") or (not ds) or ds.startswith("REPLACE_")
@@ -249,6 +316,7 @@ def setup_status() -> dict[str, Any]:
     ready = token and valid
     return {
         "ready": ready,
+        "backend": "notion" if ready else "unset",
         "has_token": token,
         "has_database": bool(db) and not db.startswith("REPLACE_"),
         "has_data_source": bool(ds) and not ds.startswith("REPLACE_"),
@@ -256,9 +324,9 @@ def setup_status() -> dict[str, Any]:
         "database_name": config.get("database_name") or "",
         "config_path": str(path),
         "next": (
-            "Vault IDs are present. Run doctor (or setup-from-url) to verify access and schema."
+            "This owner's Notion is connected. Capture and weekly picks can run."
             if ready
-            else "Walk THIS owner through connecting their own Notion. Token on the host .env via compose.override.yml, never in chat. Then setup-from-url with THEIR database link."
+            else "Ask THIS owner: local vault on this machine, or THEIR Notion (never someone else's). Local: setup-local. Notion: host .env token + setup-from-url with THEIR database link."
         ),
     }
 
@@ -266,12 +334,28 @@ def setup_status() -> dict[str, Any]:
 def write_config(database_id: str, data_source_id: str, database_name: str) -> dict[str, Any]:
     path = Path(os.environ.get("NOTION_IDEAS_CONFIG", str(hermes_home() / DEFAULT_CONFIG_NAME)))
     config = {
+        "backend": "notion",
         "database_id": notion_id(database_id),
         "data_source_id": notion_id(data_source_id),
         "database_name": (database_name or "Ideias").strip(),
     }
     path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return {"ok": True, "config_path": str(path), **config}
+
+
+def setup_local(_args: argparse.Namespace | None = None) -> dict[str, Any]:
+    path = Path(os.environ.get("NOTION_IDEAS_CONFIG", str(hermes_home() / DEFAULT_CONFIG_NAME)))
+    config = {"backend": "local"}
+    path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if not vault_path().exists():
+        save_vault([])
+    return {
+        "ok": True,
+        "backend": "local",
+        "config_path": str(path),
+        "vault_path": str(vault_path()),
+        "items": len(load_vault()),
+    }
 
 
 def setup_write(args: argparse.Namespace) -> dict[str, Any]:
@@ -518,7 +602,7 @@ def get_schema(config: dict[str, str]) -> dict[str, Any]:
 
 
 def ensure_topic_options(config: dict[str, str], topics: list[str]) -> None:
-    if not topics:
+    if is_local(config) or not topics:
         return
     schema = get_schema(config)
     prop = (schema.get("properties") or {}).get("Temas")
@@ -544,6 +628,28 @@ def capture(args: argparse.Namespace, config: dict[str, str]) -> dict[str, Any]:
         else:
             content = Path(args.content_file).read_text(encoding="utf-8")
     topics = normalize_topics(args.topic)
+    source = (getattr(args, "source", None) or getattr(args, "url", None) or "") or ""
+    captured = datetime.now(timezone.utc)
+    if is_local(config):
+        item = {
+            "id": new_local_id(),
+            "url": "",
+            "title": args.title,
+            "status": args.status,
+            "type": args.type,
+            "topics": topics,
+            "source": source or None,
+            "captured_at": captured.date().isoformat(),
+            "next_action": args.next_action or "",
+            "content": content,
+            "last_edited_time": captured.isoformat(),
+        }
+        if args.dry_run:
+            return {"dry_run": True, "operation": "capture", "backend": "local", "item": item}
+        items = load_vault()
+        items.append(item)
+        save_vault(items)
+        return {"created": True, "backend": "local", "item": item}
     if not args.dry_run:
         ensure_topic_options(config, topics)
     props: dict[str, Any] = {
@@ -554,8 +660,8 @@ def capture(args: argparse.Namespace, config: dict[str, str]) -> dict[str, Any]:
     }
     if topics:
         props["Temas"] = {"multi_select": [{"name": topic} for topic in topics]}
-    if args.source:
-        props["Fonte"] = {"url": args.source}
+    if source:
+        props["Fonte"] = {"url": source}
     if args.next_action:
         props["Próxima ação"] = {"rich_text": rich_text(args.next_action)}
     if content:
@@ -584,23 +690,58 @@ def query_all(config: dict[str, str]) -> list[dict[str, Any]]:
             return rows
 
 
+def list_items(config: dict[str, str]) -> list[dict[str, Any]]:
+    if is_local(config):
+        return load_vault()
+    return [item_from_page(page) for page in query_all(config)]
+
+
 def search(args: argparse.Namespace, config: dict[str, str]) -> dict[str, Any]:
     needle = (args.query or "").casefold().strip()
-    items = [item_from_page(page) for page in query_all(config)]
+    items = list_items(config)
     if needle:
         items = [
             item for item in items
             if needle in json.dumps(item, ensure_ascii=False).casefold()
         ]
-    return {"count": min(len(items), args.limit), "items": items[: args.limit]}
+    return {"count": min(len(items), args.limit), "items": items[: args.limit], "backend": "local" if is_local(config) else "notion"}
 
 
 def page_id(value: str) -> str:
-    return notion_id(value)
+    return item_id(value)
 
 
 def organize(args: argparse.Namespace, config: dict[str, str]) -> dict[str, Any]:
     ident = page_id(args.page)
+    if is_local(config):
+        items = load_vault()
+        current = next((item for item in items if item.get("id") == ident), None)
+        if not current:
+            raise NotionError(0, "not_found", f"No local item {ident}")
+        changed = False
+        if args.status:
+            current["status"] = args.status
+            changed = True
+        if args.type:
+            current["type"] = args.type
+            changed = True
+        if args.next_action is not None:
+            current["next_action"] = args.next_action
+            changed = True
+        add_topics = normalize_topics(args.add_topic)
+        remove_topics = set(normalize_topics(args.remove_topic))
+        if add_topics or remove_topics:
+            topics = [topic for topic in current.get("topics") or [] if topic not in remove_topics]
+            for topic in add_topics:
+                if topic not in topics:
+                    topics.append(topic)
+            current["topics"] = topics
+            changed = True
+        if not changed:
+            raise NotionError(0, "no_changes", "Provide at least one organization change")
+        current["last_edited_time"] = datetime.now(timezone.utc).isoformat()
+        save_vault(items)
+        return {"updated": True, "backend": "local", "item": current}
     page = api("GET", f"/pages/{ident}")
     current = item_from_page(page)
     updates: dict[str, Any] = {}
@@ -748,7 +889,7 @@ def pick_bucket(item: dict[str, Any], score: int) -> str:
 def weekly_picks(args: argparse.Namespace, config: dict[str, str]) -> dict[str, Any]:
     state = load_state()
     picks_config = load_picks_config()
-    items = [item_from_page(page) for page in query_all(config)]
+    items = list_items(config)
     excluded: list[dict[str, str]] = []
     candidates: list[dict[str, Any]] = []
     for item in items:
@@ -899,6 +1040,17 @@ def context_defer(args: argparse.Namespace, config: dict[str, str]) -> dict[str,
 
 
 def doctor(config: dict[str, str]) -> dict[str, Any]:
+    if is_local(config):
+        path = vault_path()
+        items = load_vault()
+        return {
+            "ok": True,
+            "backend": "local",
+            "vault_path": str(path),
+            "items": len(items),
+            "writable": os.access(path.parent, os.W_OK),
+            "fix": None,
+        }
     me = api("GET", "/users/me")
     database = api("GET", f"/databases/{config['database_id']}")
     source = api("GET", f"/data_sources/{config['data_source_id']}")
@@ -906,6 +1058,7 @@ def doctor(config: dict[str, str]) -> dict[str, Any]:
     schema = schema_report(source)
     return {
         "ok": bool(me.get("object") == "user" and me.get("type") == "bot" and schema["ok"]),
+        "backend": "notion",
         "authenticated": me.get("object") == "user" and me.get("type") == "bot",
         "bot_name_present": bool(me.get("name")),
         "database_title": "".join(x.get("plain_text", "") for x in database.get("title", [])),
@@ -923,7 +1076,7 @@ def doctor(config: dict[str, str]) -> dict[str, Any]:
 
 
 def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Capture and organize items in the Saved Notion idea vault.")
+    p = argparse.ArgumentParser(description="Capture and organize items in this owner's Saved vault (local or their Notion).")
     sub = p.add_subparsers(dest="command", required=True)
 
     cap = sub.add_parser("capture", help="Create one item in the Ideias database")
@@ -933,7 +1086,8 @@ def parser() -> argparse.ArgumentParser:
     cap.add_argument("--type", choices=TYPE_OPTIONS, default="Ideia")
     cap.add_argument("--status", choices=STATUS_OPTIONS, default="Inbox")
     cap.add_argument("--topic", action="append", help="Topic; can be repeated or comma-separated")
-    cap.add_argument("--source", help="Original URL")
+    cap.add_argument("--source", default="")
+    cap.add_argument("--url", dest="url", default="", help="Alias for --source")
     cap.add_argument("--next-action", default="")
     cap.add_argument("--dry-run", action="store_true")
 
@@ -972,8 +1126,9 @@ def parser() -> argparse.ArgumentParser:
     defer.add_argument("page")
     defer.add_argument("--reason", default="")
 
-    sub.add_parser("doctor", help="Verify token, database access, schema, and query")
-    sub.add_parser("setup-status", help="Whether THIS owner's Notion is connected (no secrets)")
+    sub.add_parser("doctor", help="Verify the chosen vault (local file or Notion)")
+    sub.add_parser("setup-status", help="Whether THIS owner has chosen a vault (no secrets)")
+    sub.add_parser("setup-local", help="Save on this machine; do not use Notion")
     sw = sub.add_parser("setup-write", help="Save THIS owner's Notion database IDs")
     sw.add_argument("--database-id", required=True)
     sw.add_argument("--data-source-id", required=True)
@@ -994,6 +1149,8 @@ def main() -> int:
             result = setup_write(args)
         elif args.command == "setup-from-url":
             result = setup_from_url(args)
+        elif args.command == "setup-local":
+            result = setup_local(args)
         elif args.command == "context" and args.context_command in ("show", "remember"):
             result = context_show(args) if args.context_command == "show" else context_remember(args)
         else:

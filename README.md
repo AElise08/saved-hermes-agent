@@ -1,11 +1,12 @@
 # Saved
 
-Send anything in chat. It archives to **your** Notion vault, remembers what is
-later, and every week texts three ideas you can actually explore now.
+Send anything in chat. It archives to **your** vault — local on the machine,
+or your own Notion if you want that — remembers what is later, and every week
+texts three ideas you can actually explore now.
 
-This is not a shared notebook. Each install talks to that owner's Notion
-account, timezone, and “not for now” list. The image ships placeholders. The
-agent’s first job is to tell you how to connect yours.
+This is not a shared notebook. Each install talks to that owner. The image
+ships placeholders. First messages: Saved asks whether to save locally or
+connect **their** Notion. Someone else's database is never used.
 
 ## Install
 
@@ -35,10 +36,15 @@ and `mint`.
 
 Text the line you minted.
 
-1. **Connect your Notion** (first messages). Saved will ask. Create an
-   internal integration at https://www.notion.so/my-integrations and share
-   **your** database with it (`...` → Connections). Put the token in a host-side
-   `.env`, never in chat, and expose it through `compose.override.yml`:
+1. **Choose the vault** (first messages). Saved will ask.
+
+   **Local (no Notion):** say you want to save on the machine. Saved runs
+   `setup-local`. Ideas live in the agent home volume
+   (`/var/lib/hermes/.saved/vault.json`), only on that install.
+
+   **Your Notion:** create an internal integration at
+   https://www.notion.so/my-integrations and share **your** database with it
+   (`...` → Connections). Put the token in a host-side `.env`, never in chat:
 
    ```sh
    cp .env.example .env
@@ -51,11 +57,10 @@ Text the line you minted.
 
    Recreating the container or running `docker compose down -v` replaces the
    in-container home. Keep the token on the host `.env` so it survives.
+   Local vault files live in that volume too — `down -v` wipes them.
 
    Then send Saved the **database** link (not a regular page). It runs
-   `setup-from-url`: extracts the database id, resolves `data_source_id`,
-   creates missing properties, and runs `doctor`. Someone else’s IDs will not
-   work and should not be copied.
+   `setup-from-url`. Someone else’s IDs will not work and should not be copied.
 
    Required Notion properties and types: `Name` (title), `Conteúdo` (text),
    `Status` (select), `Tipo` (select), `Temas` (multi-select), `Fonte` (URL),
@@ -66,7 +71,7 @@ Text the line you minted.
    under another name.
 
 2. **Send anything** — a link, a voice note, a screenshot, a half-formed idea.
-   Saved archives it in that database.
+   Saved archives it in the vault you chose.
 3. **Say when it is later.** “Not this week”, “years away”, “algum dia”. Saved
    keeps it in the vault and out of the weekly three. What counts as later is
    what *you* said, not a baked-in list of life events.

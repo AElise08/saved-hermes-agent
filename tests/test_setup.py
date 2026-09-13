@@ -76,6 +76,40 @@ class SetupStatusTests(unittest.TestCase):
             self.assertNotIn("ntn_", json.dumps(status))
 
 
+class LocalVaultTests(unittest.TestCase):
+    def test_setup_local_capture_search_without_notion(self):
+        from argparse import Namespace
+        from notion_ideas import capture, search, setup_local
+
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {"HERMES_HOME": tmp}
+            os.environ.pop("NOTION_API_KEY", None)
+            with patch.dict(os.environ, env, clear=False):
+                setup = setup_local()
+                self.assertTrue(setup["ok"])
+                self.assertEqual(setup["backend"], "local")
+                status = setup_status()
+                self.assertTrue(status["ready"])
+                self.assertEqual(status["backend"], "local")
+                created = capture(Namespace(
+                    title="nota de voz",
+                    content="consegue salvar?",
+                    content_file=None,
+                    type="Ideia",
+                    status="Inbox",
+                    topic=["teste"],
+                    source="",
+                    url="",
+                    next_action="",
+                    dry_run=False,
+                ), {"backend": "local"})
+                self.assertTrue(created["created"])
+                self.assertTrue(str(created["item"]["id"]).startswith("local-"))
+                found = search(Namespace(query="voz", limit=10), {"backend": "local"})
+                self.assertEqual(found["count"], 1)
+                self.assertEqual(found["backend"], "local")
+
+
 class TimezoneTests(unittest.TestCase):
     def test_json_wins_over_compose_utc(self):
         with tempfile.TemporaryDirectory() as tmp:
