@@ -33,7 +33,9 @@ def load_settings() -> dict:
 
 def timezone_name(data: dict | None = None) -> str:
     data = data if data is not None else load_settings()
-    name = (os.environ.get("TZ") or data.get("timezone") or "UTC").strip()
+    # Owner JSON wins. Compose often exports TZ=UTC, which would otherwise
+    # ignore a timezone saved in chat.
+    name = (str(data.get("timezone") or "").strip() or os.environ.get("TZ") or "UTC").strip()
     try:
         ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError):

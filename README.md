@@ -9,7 +9,8 @@ agent’s first job is to tell you how to connect yours.
 
 ## Install
 
-You need Git, Docker Compose, and Python 3.
+You need Git, Docker Compose, and **Python 3.10+** (the helper scripts use
+3.10 syntax; the agent itself runs inside Docker).
 
 ```sh
 git clone https://github.com/plow-pbc/plow-agents.git
@@ -28,18 +29,42 @@ docker compose logs -f agent      # wait for: plow-init: configured ... as cht_
 If you have no assistant line yet: `plow-agents login --new-line`, then `lines`
 and `mint`.
 
-`plow-credentials` is gitignored. Do not commit it.
+`plow-credentials` and `.env` are gitignored. Do not commit them.
 
 ## How to use it
 
 Text the line you minted.
 
 1. **Connect your Notion** (first messages). Saved will ask. Create an
-   internal integration at https://www.notion.so/my-integrations, share **your**
-   database with it, put `NOTION_API_KEY` in the container’s
-   `/var/lib/hermes/.env`, and send Saved the database link. It writes
-   `notion-ideas.json` for this install only. Someone else’s IDs will not work
-   and should not be copied.
+   internal integration at https://www.notion.so/my-integrations and share
+   **your** database with it (`...` → Connections). Put the token in a host-side
+   `.env`, never in chat, and expose it through `compose.override.yml`:
+
+   ```sh
+   cp .env.example .env
+   chmod 600 .env
+   # edit .env and set NOTION_API_KEY
+   cp compose.override.example.yml compose.override.yml
+   # uncomment NOTION_API_KEY in compose.override.yml
+   docker compose up -d --force-recreate
+   ```
+
+   Recreating the container or running `docker compose down -v` replaces the
+   in-container home. Keep the token on the host `.env` so it survives.
+
+   Then send Saved the **database** link (not a regular page). It runs
+   `setup-from-url`: extracts the database id, resolves `data_source_id`,
+   creates missing properties, and runs `doctor`. Someone else’s IDs will not
+   work and should not be copied.
+
+   Required Notion properties and types: `Name` (title), `Conteúdo` (text),
+   `Status` (select), `Tipo` (select), `Temas` (multi-select), `Fonte` (URL),
+   `Capturado em` (date), and `Próxima ação` (text). Required Status options:
+   Inbox, Explorar, Em andamento, Concluída, Arquivada. Required Tipo options:
+   Ideia, Link, Texto, Imagem, PDF, Vídeo. `setup-from-url` adds any of these
+   that are missing; it will not rename a title property that already exists
+   under another name.
+
 2. **Send anything** — a link, a voice note, a screenshot, a half-formed idea.
    Saved archives it in that database.
 3. **Say when it is later.** “Not this week”, “years away”, “algum dia”. Saved
@@ -49,14 +74,14 @@ Text the line you minted.
    one) Saved texts three ideas you can actually explore now — not the whole
    archive.
 
-Set timezone with `TZ` in `compose.override.yml` (IANA name, e.g.
-`Europe/Lisbon`) or ask Saved in chat. Optional `locale` in
-`saved-settings.json`: `en` or `pt`.
+Set timezone in `saved-settings.json` (`timezone`, IANA name) or with `TZ` in
+`compose.override.yml`. The JSON value wins if both are set. Optional
+`SAVED_LOCALE`: `en` or `pt`.
 
 ```sh
 cp compose.override.example.yml compose.override.yml
-# edit TZ, then:
-docker compose up -d
+# edit TZ if you want the whole container in that zone, then:
+docker compose up -d --force-recreate
 ```
 
 ```sh
@@ -72,6 +97,12 @@ once an hour: day × model counts, nothing else. The listing page (name, repo,
 video) is **not** published by this boot — that is a separate step.
 
 `AGENT_ID` defaults to `saved`.
+
+## Tests
+
+```sh
+python3 -m unittest discover -s tests -q
+```
 
 ## License
 

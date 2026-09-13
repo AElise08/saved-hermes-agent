@@ -24,9 +24,11 @@ Scripts live at `/var/lib/hermes/scripts/` (home copy) and `/opt/saved/scripts/`
 
 ```bash
 python3 /var/lib/hermes/scripts/notion_ideas.py setup-status
+python3 /var/lib/hermes/scripts/notion_ideas.py setup-from-url "<their-database-url>"
 ```
 
-See `references/setup.md` and `references/notion-api-access.md`. Never print
+Token lives on the host `.env` via `compose.override.yml`, never in chat. See
+`references/setup.md` and `references/notion-api-access.md`. Never print
 `NOTION_API_KEY`. Never reuse another install's database IDs.
 
 ## Capture

@@ -77,6 +77,20 @@ TITLE_PROP = "Name"
 CONTENT_PROP = "Conteúdo"
 STATUS_OPTIONS = ("Inbox", "Explorar", "Em andamento", "Concluída", "Arquivada")
 TYPE_OPTIONS = ("Ideia", "Link", "Texto", "Imagem", "PDF", "Vídeo")
+REQUIRED_PROPERTIES = {
+    TITLE_PROP: "title",
+    CONTENT_PROP: "rich_text",
+    "Status": "select",
+    "Tipo": "select",
+    "Temas": "multi_select",
+    "Fonte": "url",
+    "Capturado em": "date",
+    "Próxima ação": "rich_text",
+}
+SELECT_OPTIONS = {
+    "Status": STATUS_OPTIONS,
+    "Tipo": TYPE_OPTIONS,
+}
 
 
 class NotionError(RuntimeError):
@@ -95,9 +109,17 @@ def load_key() -> str:
     key = os.environ.get("NOTION_API_KEY")
     if key:
         return key.strip()
-    env_path = hermes_home() / ".env"
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8", errors="replace").splitlines():
+    home = hermes_home()
+    candidates = [home / ".env", home / ".hermes" / ".env"]
+    candidates.extend(sorted(home.glob(".env.bak*"), reverse=True))
+    for env_path in candidates:
+        if not env_path.exists():
+            continue
+        try:
+            lines = env_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for line in lines:
             stripped = line.strip()
             if stripped.startswith("NOTION_API_KEY="):
                 value = stripped.split("=", 1)[1].strip()
@@ -190,6 +212,27 @@ def has_key() -> bool:
         return False
 
 
+def notion_id(value: str) -> str:
+    tail = value.split("?")[0].rstrip("/").split("/")[-1]
+    match = re.search(r"(?:^|-)([0-9a-fA-F]{32})$", tail)
+    if match:
+        raw = match.group(1).lower()
+    else:
+        compact = tail.replace("-", "")
+        match = re.search(r"([0-9a-fA-F]{32})$", compact)
+        if not match:
+            raise NotionError(0, "invalid_id", "Expected a Notion page/database ID or URL")
+        raw = match.group(1).lower()
+    return f"{raw[:8]}-{raw[8:12]}-{raw[12:16]}-{raw[16:20]}-{raw[20:]}"
+
+
+def ids_look_valid(database_id: str, data_source_id: str) -> bool:
+    try:
+        return notion_id(database_id) == database_id and notion_id(data_source_id) == data_source_id
+    except NotionError:
+        return False
+
+
 def setup_status() -> dict[str, Any]:
     path = Path(os.environ.get("NOTION_IDEAS_CONFIG", str(hermes_home() / DEFAULT_CONFIG_NAME)))
     config: dict[str, Any] = {}
@@ -201,34 +244,40 @@ def setup_status() -> dict[str, Any]:
     db = str(config.get("database_id") or "")
     ds = str(config.get("data_source_id") or "")
     placeholder = (not db) or db.startswith("REPLACE_") or (not ds) or ds.startswith("REPLACE_")
+    valid = (not placeholder) and ids_look_valid(db, ds)
+    token = has_key()
+    ready = token and valid
     return {
-        "ready": has_key() and not placeholder,
-        "has_token": has_key(),
+        "ready": ready,
+        "has_token": token,
         "has_database": bool(db) and not db.startswith("REPLACE_"),
         "has_data_source": bool(ds) and not ds.startswith("REPLACE_"),
+        "ids_look_valid": valid,
         "database_name": config.get("database_name") or "",
         "config_path": str(path),
         "next": (
-            "Vault is connected. Capture and weekly picks can run."
-            if has_key() and not placeholder
-            else "Walk THIS owner through connecting their own Notion. See skills/saved/references/setup.md. Never reuse another person's database IDs."
+            "Vault IDs are present. Run doctor (or setup-from-url) to verify access and schema."
+            if ready
+            else "Walk THIS owner through connecting their own Notion. Token on the host .env via compose.override.yml, never in chat. Then setup-from-url with THEIR database link."
         ),
     }
 
 
-def setup_write(args: argparse.Namespace) -> dict[str, Any]:
+def write_config(database_id: str, data_source_id: str, database_name: str) -> dict[str, Any]:
     path = Path(os.environ.get("NOTION_IDEAS_CONFIG", str(hermes_home() / DEFAULT_CONFIG_NAME)))
     config = {
-        "database_id": args.database_id.strip(),
-        "data_source_id": args.data_source_id.strip(),
-        "database_name": (args.database_name or "Ideias").strip(),
+        "database_id": notion_id(database_id),
+        "data_source_id": notion_id(data_source_id),
+        "database_name": (database_name or "Ideias").strip(),
     }
-    if not config["database_id"] or not config["data_source_id"]:
-        raise NotionError(0, "invalid_config", "database_id and data_source_id are required")
-    if config["database_id"].startswith("REPLACE_") or config["data_source_id"].startswith("REPLACE_"):
-        raise NotionError(0, "needs_setup", "Those are placeholders. Use this owner's Notion IDs.")
     path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return {"ok": True, "config_path": str(path), "database_name": config["database_name"]}
+    return {"ok": True, "config_path": str(path), **config}
+
+
+def setup_write(args: argparse.Namespace) -> dict[str, Any]:
+    if str(args.database_id).startswith("REPLACE_") or str(args.data_source_id).startswith("REPLACE_"):
+        raise NotionError(0, "needs_setup", "Those are placeholders. Use this owner's Notion IDs.")
+    return write_config(args.database_id, args.data_source_id, args.database_name)
 
 
 def headers() -> dict[str, str]:
@@ -257,6 +306,141 @@ def api(method: str, path: str, payload: dict[str, Any] | None = None) -> dict[s
         raise NotionError(exc.code, code, message) from exc
     except urllib.error.URLError as exc:
         raise NotionError(0, "network_error", str(exc.reason)) from exc
+
+
+def schema_report(source: dict[str, Any]) -> dict[str, Any]:
+    props = source.get("properties") or {}
+    missing: list[str] = []
+    wrong: list[dict[str, str]] = []
+    missing_opts: list[dict[str, Any]] = []
+    for name, kind in REQUIRED_PROPERTIES.items():
+        prop = props.get(name)
+        if not prop:
+            missing.append(name)
+            continue
+        actual = str(prop.get("type") or "")
+        if actual != kind:
+            wrong.append({"name": name, "expected": kind, "got": actual})
+            continue
+        wanted = SELECT_OPTIONS.get(name)
+        if wanted:
+            have = {item.get("name") for item in (prop.get(kind) or {}).get("options") or []}
+            need = [option for option in wanted if option not in have]
+            if need:
+                missing_opts.append({"name": name, "missing": need})
+    return {
+        "missing_properties": missing,
+        "wrong_types": wrong,
+        "missing_options": missing_opts,
+        "ok": not (missing or wrong or missing_opts),
+    }
+
+
+def property_create_payload(name: str) -> dict[str, Any]:
+    kind = REQUIRED_PROPERTIES[name]
+    if kind == "title":
+        return {"title": {}}
+    if kind == "rich_text":
+        return {"rich_text": {}}
+    if kind == "url":
+        return {"url": {}}
+    if kind == "date":
+        return {"date": {}}
+    if kind == "multi_select":
+        return {"multi_select": {"options": []}}
+    if kind == "select":
+        return {"select": {"options": [{"name": option} for option in SELECT_OPTIONS[name]]}}
+    raise NotionError(0, "invalid_config", f"unsupported property type for {name}")
+
+
+def ensure_schema(config: dict[str, str], apply: bool = True) -> dict[str, Any]:
+    source = api("GET", f"/data_sources/{config['data_source_id']}")
+    report = schema_report(source)
+    applied: list[str] = []
+    if apply:
+        patch: dict[str, Any] = {}
+        for name in report["missing_properties"]:
+            if name == TITLE_PROP:
+                continue
+            patch[name] = property_create_payload(name)
+        props = source.get("properties") or {}
+        for item in report["missing_options"]:
+            name = item["name"]
+            if name in patch or name not in props:
+                continue
+            kind = REQUIRED_PROPERTIES[name]
+            current = [opt.get("name") for opt in (props[name].get(kind) or {}).get("options") or [] if opt.get("name")]
+            for option in SELECT_OPTIONS[name]:
+                if option not in current:
+                    current.append(option)
+            patch[name] = {kind: {"options": [{"name": option} for option in current]}}
+        if patch:
+            api("PATCH", f"/data_sources/{config['data_source_id']}", {"properties": patch})
+            applied = list(patch)
+            source = api("GET", f"/data_sources/{config['data_source_id']}")
+            report = schema_report(source)
+    report["applied"] = applied
+    return report
+
+
+def find_child_database(page_ident: str) -> str | None:
+    cursor: str | None = None
+    while True:
+        path = f"/blocks/{page_ident}/children?page_size=100"
+        if cursor:
+            path += f"&start_cursor={cursor}"
+        data = api("GET", path)
+        for block in data.get("results") or []:
+            if block.get("type") == "child_database":
+                return block.get("id")
+        if not data.get("has_more"):
+            return None
+        cursor = data.get("next_cursor")
+        if not cursor:
+            return None
+
+
+def resolve_database(url: str) -> dict[str, str]:
+    ident = notion_id(url)
+    try:
+        database = api("GET", f"/databases/{ident}")
+    except NotionError as exc:
+        if exc.status == 400 and "page, not a database" in (exc.message or ""):
+            child = find_child_database(ident)
+            if not child:
+                raise NotionError(
+                    0,
+                    "not_a_database",
+                    "That URL is a page, not a database. Send the database URL, or add a database on the page.",
+                ) from exc
+            database = api("GET", f"/databases/{child}")
+        elif exc.status == 404:
+            raise NotionError(
+                404,
+                "not_shared",
+                "Database not visible. Share it with this integration via Notion Connections, then retry.",
+            ) from exc
+        else:
+            raise
+    sources = database.get("data_sources") or []
+    if not sources or not sources[0].get("id"):
+        raise NotionError(0, "no_data_source", "Database has no data_sources[0].id")
+    title = "".join(item.get("plain_text", "") for item in database.get("title") or [])
+    return {
+        "database_id": database["id"],
+        "data_source_id": sources[0]["id"],
+        "database_name": title or "Ideias",
+    }
+
+
+def setup_from_url(args: argparse.Namespace) -> dict[str, Any]:
+    resolved = resolve_database(args.url)
+    if args.dry_run:
+        return {"dry_run": True, **resolved}
+    written = write_config(resolved["database_id"], resolved["data_source_id"], resolved["database_name"])
+    schema = ensure_schema(written, apply=not args.no_schema)
+    health = doctor(written)
+    return {**written, "schema": schema, "doctor": health}
 
 
 def chunks(text: str, size: int = 1900) -> list[str]:
@@ -412,11 +596,7 @@ def search(args: argparse.Namespace, config: dict[str, str]) -> dict[str, Any]:
 
 
 def page_id(value: str) -> str:
-    match = re.search(r"[0-9a-fA-F]{32}", value.replace("-", ""))
-    if not match:
-        raise NotionError(0, "invalid_page_id", "Expected a Notion page ID or URL")
-    raw = match.group(0).lower()
-    return f"{raw[:8]}-{raw[8:12]}-{raw[12:16]}-{raw[16:20]}-{raw[20:]}"
+    return notion_id(value)
 
 
 def organize(args: argparse.Namespace, config: dict[str, str]) -> dict[str, Any]:
@@ -723,14 +903,22 @@ def doctor(config: dict[str, str]) -> dict[str, Any]:
     database = api("GET", f"/databases/{config['database_id']}")
     source = api("GET", f"/data_sources/{config['data_source_id']}")
     query = api("POST", f"/data_sources/{config['data_source_id']}/query", {"page_size": 1})
+    schema = schema_report(source)
     return {
+        "ok": bool(me.get("object") == "user" and me.get("type") == "bot" and schema["ok"]),
         "authenticated": me.get("object") == "user" and me.get("type") == "bot",
         "bot_name_present": bool(me.get("name")),
         "database_title": "".join(x.get("plain_text", "") for x in database.get("title", [])),
         "data_source_id": source.get("id"),
         "property_names": list((source.get("properties") or {}).keys()),
+        "schema": schema,
         "query_ok": True,
         "rows_sampled": len(query.get("results", [])),
+        "fix": (
+            None
+            if schema["ok"]
+            else "Create the missing properties or run: python3 notion_ideas.py setup-from-url <database-url>"
+        ),
     }
 
 
@@ -790,6 +978,10 @@ def parser() -> argparse.ArgumentParser:
     sw.add_argument("--database-id", required=True)
     sw.add_argument("--data-source-id", required=True)
     sw.add_argument("--database-name", default="Ideias")
+    sf = sub.add_parser("setup-from-url", help="Connect THIS owner's database from a Notion URL")
+    sf.add_argument("url")
+    sf.add_argument("--dry-run", action="store_true")
+    sf.add_argument("--no-schema", action="store_true", help="Do not create missing properties")
     return p
 
 
@@ -800,6 +992,8 @@ def main() -> int:
             result = setup_status()
         elif args.command == "setup-write":
             result = setup_write(args)
+        elif args.command == "setup-from-url":
+            result = setup_from_url(args)
         elif args.command == "context" and args.context_command in ("show", "remember"):
             result = context_show(args) if args.context_command == "show" else context_remember(args)
         else:
@@ -817,6 +1011,8 @@ def main() -> int:
             else:
                 result = doctor(config)
         print(json.dumps(result, ensure_ascii=False))
+        if args.command == "doctor" and isinstance(result, dict) and result.get("ok") is False:
+            return 2
         return 0
     except NotionError as exc:
         print(json.dumps({"error": exc.code, "status": exc.status, "message": exc.message}, ensure_ascii=False), file=sys.stderr)

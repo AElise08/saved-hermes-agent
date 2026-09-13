@@ -1,11 +1,18 @@
 # Copy to compose.override.yml (gitignored) after minting a line.
 # Timezone, weekly hour, and locale are owner-specific — do not assume a country.
+#
+# Keep TZ here in sync with saved-settings.json if you set both. Compose no
+# longer exports a default TZ; Saved weekly timing uses saved-settings.json
+# first, then TZ if present.
 services:
   agent:
     environment:
       AGENT_ID: saved
       # IANA zone, e.g. America/Sao_Paulo, Europe/Lisbon, America/New_York
-      TZ: UTC
+      # TZ: UTC
+      # SAVED_WEEKLY_WEEKDAY: 6
+      # SAVED_WEEKLY_HOUR: 14
+      # SAVED_LOCALE: en
       # Optional. Omit these to use the Plow default model.
       # HERMES_PROVIDER: deepseek
       # HERMES_MODEL: deepseek-flash

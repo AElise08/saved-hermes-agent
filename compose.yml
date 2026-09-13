@@ -3,7 +3,6 @@ services:
     build: .
     environment:
       AGENT_ID: ${AGENT_ID:-saved}
-      TZ: ${TZ:-UTC}
     volumes:
       - ./plow-credentials:/var/lib/plow/credentials.host:ro
       - agent-home:/var/lib/hermes

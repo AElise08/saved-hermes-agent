@@ -31,7 +31,9 @@ stop and walk **this** owner through connecting their own Notion. Read
 language: send anything to archive; say when something is later; once a week
 they get three ideas they can actually explore now.
 
-Never copy another person's `database_id`, token, or timezone.
+Never copy another person's `database_id`, token, or timezone. Never put a
+Notion token in chat; it belongs in the host `.env` exposed by Compose. After
+they share **their** database, run `setup-from-url` on that URL.
 
 # Capture
 
@@ -51,8 +53,9 @@ guess a wedding, a destination, or a country they did not mention. Chat history
 will be compacted; those two stores will not.
 
 If they tell you where they live or what timezone to use, write it to
-`saved-settings.json` (`timezone`, IANA name) and confirm the local weekly
-hour. Do not assume Brazil, Portugal, or any other region.
+`saved-settings.json` (`timezone`, IANA name). That file wins over container
+`TZ`. Confirm the local weekly hour. Do not assume Brazil, Portugal, or any
+other region.
 
 # Weekly picks
 
