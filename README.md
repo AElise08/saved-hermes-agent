@@ -5,8 +5,9 @@ or your own Notion if you want that — remembers what is later, and every week
 texts three ideas you can actually explore now.
 
 This is not a shared notebook. Each install talks to that owner. The image
-ships placeholders. First messages: Saved asks whether to save locally or
-connect **their** Notion. Someone else's database is never used.
+ships placeholders. First messages: Saved asks **Guardar aqui na máquina, ou
+no Notion?** if you wrote in Portuguese, the English version if you wrote in
+English, or both if you only sent a link. Someone else's database is never used.
 
 ## Install
 
@@ -38,9 +39,9 @@ Text the line you minted.
 
 1. **Choose the vault** (first messages). Saved will ask.
 
-   **Local (no Notion):** say you want to save on the machine. Saved runs
-   `setup-local`. Ideas live in the agent home volume
-   (`/var/lib/hermes/.saved/vault.json`), only on that install.
+   **Local (no Notion):** answer the machine. Saved runs `setup-local`. Ideas
+   live in the agent home volume (`/var/lib/hermes/.saved/vault.json`), only
+   on that install.
 
    **Your Notion:** create an internal integration at
    https://www.notion.so/my-integrations and share **your** database with it
@@ -80,8 +81,9 @@ Text the line you minted.
    archive.
 
 Set timezone in `saved-settings.json` (`timezone`, IANA name) or with `TZ` in
-`compose.override.yml`. The JSON value wins if both are set. Optional
-`SAVED_LOCALE`: `en` or `pt`.
+`compose.override.yml`. The JSON value wins if both are set. Chat language
+follows whatever you type; Saved writes `locale` (`pt` or `en`) from that so
+the weekly three match. Optional env `SAVED_LOCALE` overrides the file.
 
 ```sh
 cp compose.override.example.yml compose.override.yml

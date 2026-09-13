@@ -326,7 +326,7 @@ def setup_status() -> dict[str, Any]:
         "next": (
             "This owner's Notion is connected. Capture and weekly picks can run."
             if ready
-            else "Ask THIS owner: local vault on this machine, or THEIR Notion (never someone else's). Local: setup-local. Notion: host .env token + setup-from-url with THEIR database link."
+            else "Ask one line in their language, then wait. PT: Guardar aqui na máquina, ou no Notion? EN: Save here on this machine, or in Notion? After they pick: máquina/local → setup-local. Notion → host .env token + setup-from-url with THEIR database link."
         ),
     }
 

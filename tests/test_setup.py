@@ -74,6 +74,7 @@ class SetupStatusTests(unittest.TestCase):
             self.assertFalse(status["ready"])
             self.assertFalse(status["has_token"])
             self.assertNotIn("ntn_", json.dumps(status))
+            self.assertIn("Guardar aqui na máquina, ou no Notion?", status["next"])
 
 
 class LocalVaultTests(unittest.TestCase):
@@ -120,6 +121,16 @@ class TimezoneTests(unittest.TestCase):
             }))
             with patch.dict(os.environ, {"HERMES_HOME": tmp, "TZ": "UTC"}, clear=False):
                 self.assertEqual(saved_config.timezone_name(), "America/Belem")
+
+    def test_set_locale_from_pt_br(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.environ.pop("SAVED_LOCALE", None)
+            with patch.dict(os.environ, {"HERMES_HOME": tmp}, clear=False):
+                self.assertEqual(saved_config.locale(), "en")
+                saved_config.set_locale("pt-BR")
+                self.assertEqual(saved_config.locale(), "pt")
+                saved = json.loads(Path(tmp, "saved-settings.json").read_text())
+                self.assertEqual(saved["locale"], "pt")
 
 
 if __name__ == "__main__":

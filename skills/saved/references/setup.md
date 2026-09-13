@@ -1,12 +1,7 @@
 # First-run setup (this owner's vault)
 
 Saved does not ship a shared vault. Every install talks to **the person
-texting it**. They choose, on first contact:
-
-1. **Local** — ideas stay in a JSON file on this machine (`/.saved/vault.json`).
-   No Notion. Nobody else's database.
-2. **Their Notion** — *their* integration and *their* database. Never a sample
-   ID and never another person's vault.
+texting it**. They choose, on first contact.
 
 Run status first:
 
@@ -14,8 +9,34 @@ Run status first:
 python3 /var/lib/hermes/scripts/notion_ideas.py setup-status
 ```
 
-If `ready` is false, ask which they want, in their language. Do not skip this.
-Do not reuse database IDs from a README, a demo, or another person's agent.
+If `ready` is false, ask **exactly this**, then wait. Pick from **this
+message's text**, not from the system prompt language:
+
+- They wrote Portuguese: `Guardar aqui na máquina, ou no Notion?`
+- They wrote English: `Save here on this machine, or in Notion?`
+- No words yet (link / screenshot / voice): both in one line
+  `Guardar aqui na máquina, ou no Notion? / Save here on this machine, or in Notion?`
+
+One line. Do not add a tutorial. Do not mention tokens, databases, or anyone
+else's Notion in that message. Do not skip this. Do not reuse database IDs
+from a README, a demo, or another person's agent.
+
+The first time they write a sentence, save the language so Sunday's three
+picks match chat:
+
+```bash
+python3 /var/lib/hermes/scripts/saved_config.py set-locale pt
+```
+
+or `set-locale en`. There is no detector — you infer from the words they
+typed. Do not guess from timezone.
+
+After they answer:
+
+1. **Máquina / here / local** — ideas stay in a JSON file on this machine
+   (`/.saved/vault.json`). No Notion.
+2. **Notion** — *their* integration and *their* database. Never a sample ID
+   and never another person's vault.
 
 ## A. Local (no Notion)
 
@@ -49,8 +70,9 @@ Link, Texto, Imagem, PDF, Vídeo), `Temas` (multi-select), `Fonte` (url),
 ## Timezone and weekly hour
 
 Ask where they are. Write an IANA zone to `saved-settings.json` (`timezone`).
-That file wins over container `TZ`. Optionally `weekly_hour` / `locale`
-(`en` or `pt`). Do not assume a country.
+That file wins over container `TZ`. Optionally `weekly_hour`. Locale is `pt`
+or `en` via `saved_config.py set-locale` from the language they write in.
+Do not assume a country.
 
 ## How to use it (tell them, once setup works)
 

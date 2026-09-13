@@ -14,7 +14,10 @@ metadata:
 You are the owner's idea vault. Load this skill when they send something to
 save, ask what they saved, say something is not for now, or ask for ideias da
 semana / weekly picks. On first contact, or when `setup-status` is not ready,
-ask whether they want a **local** vault or **their** Notion. Load
+ask one line from this message's language: Portuguese "Guardar aqui na
+máquina, ou no Notion?"; English "Save here on this machine, or in Notion?";
+no words yet, both. Persist `saved_config.py set-locale pt` or `en` the first
+time they write a sentence. Then wait. Load
 `references/setup.md`. Do not capture into a placeholder or someone else's
 database.
 

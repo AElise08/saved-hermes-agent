@@ -22,6 +22,7 @@ fact or deferral, write it to **both**:
 | "ideias da semana" / "what should I explore" | `weekly-picks` (uses saved-context automatically) |
 | "me lembra às 17h", "send this later", "Saturday" | **never** `hermes cron --deliver plow_chat`. Queue with `outbox.py add --at` in *their* timezone |
 | "I live in …" / a timezone | write `timezone` in `saved-settings.json` (IANA name). Do not assume a country |
+| First sentence in Portuguese or English | `python3 /var/lib/hermes/scripts/saved_config.py set-locale pt` or `en`. Chat has no detector; weekly digest reads this file |
 
 ### Defer one idea (not for now)
 
