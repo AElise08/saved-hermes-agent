@@ -1,6 +1,6 @@
 ---
 name: saved
-description: "Capture ideas locally or into the owner's own Notion vault, remember what is later, and pick three things worth exploring this week."
+description: "Your idea vault over chat: save on this machine or in your Notion, remember what is later, three weekly picks you can actually do."
 version: 1.0.0
 license: MIT
 platforms: [linux]

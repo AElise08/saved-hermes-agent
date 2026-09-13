@@ -1,13 +1,14 @@
 # Saved
 
-Send anything in chat. It archives to **your** vault — local on the machine,
-or your own Notion if you want that — remembers what is later, and every week
-texts three ideas you can actually explore now.
+Text it anything: a link, a voice note, a screenshot, a half-formed idea.
+Saved keeps it in **your** vault — on this machine, or in **your** Notion,
+you choose on the first message — and once a week texts **three** ideas you
+can actually explore now. Not the whole archive. Not someone else's notebook.
 
-This is not a shared notebook. Each install talks to that owner. The image
-ships placeholders. First messages: Saved asks **Guardar aqui na máquina, ou
-no Notion?** if you wrote in Portuguese, the English version if you wrote in
-English, or both if you only sent a link. Someone else's database is never used.
+First question, in the language you wrote in:
+
+**Guardar aqui na máquina, ou no Notion?**
+
 
 ## Install
 
