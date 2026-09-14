@@ -9,6 +9,15 @@ First question, in the language you wrote in:
 
 **Guardar aqui na máquina, ou no Notion?**
 
+## Use cases
+
+- **Capture from chat.** Forward a reel, a link, a screenshot, or a half-formed
+  thought. Saved writes it into **your** vault — this machine or your Notion —
+  with source, date, and a next action. You do not copy-paste into a database.
+- **Three this week.** Once a week it texts three ideas you can actually
+  explore now. Not the whole Inbox. What you marked later stays out.
+- **Later still counts.** “Not this week”, “algum dia”, “years away”: it stays
+  saved and off the shortlist. Saved does not invent a life plan for you.
 
 ## Install
 
