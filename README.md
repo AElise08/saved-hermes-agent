@@ -33,15 +33,43 @@ cd saved-hermes-agent
 
 plow-agents login                 # text the printed “Plow Activate: …” code
 plow-agents lines                 # pick a line whose STATUS is free
-plow-agents mint ln_xxx           # writes ./plow-credentials — do this before the first up
-docker compose up --build -d
+plow-agents deploy --local --line ln_xxx
 docker compose logs -f agent      # wait for: plow-init: configured ... as cht_
 ```
 
 If you have no assistant line yet: `plow-agents login --new-line`, then `lines`
-and `mint`.
+and `deploy --local`.
 
 `plow-credentials` and `.env` are gitignored. Do not commit them.
+
+### Cloud custom image
+
+Plow cloud agents now run a **public custom image** — the first step toward
+one-click deploy on the leaderboard. Follow the same flow as
+[plow-agents](https://github.com/plow-pbc/plow-agents): `plow-agents.toml`
+in this repo already names the image, so you can omit it on the CLI.
+
+```sh
+# classic GitHub PAT with write:packages — fine-grained PATs cannot push GHCR
+docker login ghcr.io -u YOUR_GITHUB_USERNAME
+
+plow-agents image build          # linux/amd64, tag from plow-agents.toml
+plow-agents image push           # prints ghcr.io/…/saved-hermes-agent@sha256:…
+```
+
+After the first push, make the GHCR package **public** (GitHub → Packages);
+otherwise Plow’s anonymous pull fails. Copy the `repository@sha256:…` line,
+then request it on a **free** line:
+
+```sh
+plow-agents deploy ghcr.io/aelise08/saved-hermes-agent@sha256:… --line ln_xxx
+plow-agents agents               # wait until STATUS is running, then text the number
+```
+
+`deploy` without `--local` occupies the line on Plow’s cloud — stop Compose
+on that line first. Credentials stay out of the image (`.dockerignore`
+already drops `plow-credentials` and `.env`). You can also deploy a listing
+with `plow-agents deploy exe:hermes`.
 
 ## How to use it
 
