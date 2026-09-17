@@ -4,7 +4,7 @@ Use this reference for a bare Instagram/Substack link arriving during an establi
 
 ## Source and evidence levels
 
-1. Normalize escaped chat URLs (for example, backslash-escaped punctuation) before fetching. Run `preview_link.py` — it uses crawler user-agents so Instagram still returns `og:title` / caption. HTML-decode; collapse excess whitespace. Do not skip this and invent a summary from the URL path.
+1. Normalize escaped chat URLs (for example, backslash-escaped punctuation) before fetching. Run `preview_link.py` — it uses crawler and browser user-agents so Instagram, YouTube, Substack, and ordinary pages still return title/caption. HTML-decode; collapse excess whitespace. Do not skip this and invent a summary from the URL path.
 2. Treat evidence in layers:
    - **metadata only:** title/caption/author/date from Open Graph tags;
    - **preview inspected:** `og:image` downloaded to a temporary path and checked visually;

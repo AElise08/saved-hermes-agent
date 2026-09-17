@@ -56,7 +56,7 @@ later; once a week they get three ideas they can actually explore now.
 # Capture
 
 A link, a screenshot, a voice note, or "save this" is a capture. If they sent
-a URL (Instagram reel, TikTok, Substack, anything public), first run
+a URL (Instagram reel, YouTube, Substack, TikTok, or any public page), first run
 `python3 /var/lib/hermes/scripts/preview_link.py "<url>"` and archive with
 that caption/title — or one shot:
 `python3 /var/lib/hermes/scripts/notion_ideas.py capture --from-url "<url>"`.

@@ -35,6 +35,49 @@ class ParseTests(unittest.TestCase):
         self.assertIn("Last chance", caption)
         self.assertIn("productplaybook_", title)
 
+    def test_youtube_and_substack_and_generic_article(self):
+        yt = """
+        <html><head>
+        <meta property="og:site_name" content="YouTube" />
+        <meta property="og:title" content="Never Gonna Give You Up" />
+        <meta property="og:description" content="The official video for Never Gonna Give You Up." />
+        <link rel="alternate" type="application/json+oembed" href="https://www.youtube.com/oembed?url=https://youtu.be/dQw4w9WgXcQ" />
+        </head></html>
+        """
+        sub = """
+        <html><head>
+        <meta property="og:site_name" content="Substack" />
+        <meta property="og:title" content="How to hire a PM" />
+        <meta property="og:description" content="A field guide to product interviews." />
+        <script type="application/ld+json">{"headline":"How to hire a PM","author":{"name":"Lenny"},"description":"A field guide to product interviews."}</script>
+        </head></html>
+        """
+        article = """
+        <html><head>
+        <title>A Complete Guide to useEffect</title>
+        <meta property="og:title" content="A Complete Guide to useEffect" />
+        <meta property="og:description" content="Effects are a part of your data flow." />
+        </head></html>
+        """
+        with patch.object(preview_link, "oembed", return_value={"title": "Never Gonna Give You Up", "author": "Rick Astley"}):
+            with patch.object(preview_link, "fetch", return_value=(200, yt)):
+                data = preview_link.preview("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["media_type"], "Vídeo")
+        self.assertEqual(data["author"], "Rick Astley")
+        with patch.object(preview_link, "oembed", return_value={}):
+            with patch.object(preview_link, "fetch", return_value=(200, sub)):
+                data = preview_link.preview("https://lennysnewsletter.com/p/how-to-hire")
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["author"], "Lenny")
+        self.assertIn("field guide", data["caption"])
+        with patch.object(preview_link, "oembed", return_value={}):
+            with patch.object(preview_link, "fetch", return_value=(200, article)):
+                data = preview_link.preview("https://overreacted.io/a-complete-guide-to-useeffect/")
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["media_type"], "Link")
+        self.assertIn("useEffect", data["title"])
+
     def test_canonical_strips_tracking(self):
         url = "https://www.instagram.com/reel/Abc/?utm_source=ig_web&igsh=xyz"
         self.assertEqual(

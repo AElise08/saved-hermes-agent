@@ -22,6 +22,7 @@ USER_AGENTS = (
     "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
     "Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)",
     "WhatsApp/2.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
 )
 
 META_TAG = re.compile(r"<meta\b[^>]*>", re.I)
@@ -36,6 +37,14 @@ INSTAGRAM_DESC = re.compile(
 IG_TITLE_AUTHOR = re.compile(
     r"""^(.*?)\s+on Instagram:\s*\"?(.*)\"?\s*$""",
     re.I | re.S,
+)
+JSON_LD = re.compile(
+    r"""<script[^>]+type=["']application/ld\+json["'][^>]*>(.*?)</script>""",
+    re.I | re.S,
+)
+OEMBED_LINK = re.compile(
+    r"""<link[^>]+type=["']application/(?:json\+oembed|xml\+oembed)["'][^>]*>""",
+    re.I,
 )
 TWITTER_AUTHOR = re.compile(r"^(.*?)\s*\(@([^)]+)\)")
 
@@ -82,6 +91,47 @@ def parse_meta(page: str) -> dict[str, str]:
     return found
 
 
+def parse_json_ld(page: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for block in JSON_LD.findall(page or ""):
+        try:
+            data = json.loads(html_lib.unescape(block))
+        except json.JSONDecodeError:
+            continue
+        nodes = data if isinstance(data, list) else data.get("@graph") if isinstance(data, dict) else None
+        if nodes is None:
+            nodes = [data] if isinstance(data, dict) else []
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            headline = str(node.get("headline") or node.get("name") or "").strip()
+            desc = str(node.get("description") or "").strip()
+            author = node.get("author")
+            if isinstance(author, dict):
+                author = str(author.get("name") or "").strip()
+            elif isinstance(author, list) and author and isinstance(author[0], dict):
+                author = str(author[0].get("name") or "").strip()
+            else:
+                author = str(author or "").strip()
+            if headline and "title" not in out:
+                out["title"] = headline
+            if desc and "caption" not in out:
+                out["caption"] = desc
+            if author and "author" not in out:
+                out["author"] = author
+    return out
+
+
+def oembed_href(page: str) -> str:
+    for tag in OEMBED_LINK.findall(page or ""):
+        attrs = _attrs(tag)
+        href = attrs.get("href") or ""
+        kind = (attrs.get("type") or "").lower()
+        if href and "json" in kind:
+            return html_lib.unescape(href)
+    return ""
+
+
 def _first(meta: dict[str, str], *keys: str) -> str:
     for key in keys:
         value = (meta.get(key) or "").strip()
@@ -100,7 +150,9 @@ def guess_media_type(url: str, meta: dict[str, str]) -> str:
     og_type = (_first(meta, "og:type") or "").lower()
     if any(part in path for part in ("/reel/", "/reels/", "/tiktok.com", "/shorts/")):
         return "Vídeo"
-    if host.endswith("tiktok.com") or host.endswith("youtube.com") or host == "youtu.be":
+    if host.endswith("tiktok.com"):
+        return "Vídeo"
+    if host.endswith("youtube.com") or host.endswith("youtube-nocookie.com") or host == "youtu.be":
         return "Vídeo"
     if "video" in og_type:
         return "Vídeo"
@@ -144,6 +196,8 @@ def split_instagram(meta: dict[str, str]) -> tuple[str, str, str]:
 
 def fetch(url: str, accept: str = "text/html") -> tuple[int, str]:
     last_error = ""
+    last_body = ""
+    last_status = 0
     for agent in USER_AGENTS:
         req = urllib.request.Request(
             url,
@@ -153,29 +207,45 @@ def fetch(url: str, accept: str = "text/html") -> tuple[int, str]:
             with urllib.request.urlopen(req, timeout=18) as resp:
                 charset = resp.headers.get_content_charset() or "utf-8"
                 body = resp.read(400_000).decode(charset, "replace")
-                return resp.status, body
+                status = resp.status
         except urllib.error.HTTPError as exc:
             last_error = f"HTTP {exc.code}"
+            last_status = exc.code
             try:
-                snippet = exc.read(800).decode("utf-8", "replace")
+                last_body = exc.read(800).decode("utf-8", "replace")
             except Exception:  # noqa: BLE001
-                snippet = ""
-            if exc.code == 200:
-                return exc.code, snippet
+                last_body = ""
+            continue
         except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
             last_error = str(exc)
-    return 0, last_error
+            continue
+        if accept.startswith("application/json"):
+            return status, body
+        meta = parse_meta(body)
+        if _first(meta, "og:title", "twitter:title", "og:description", "description", "title"):
+            return status, body
+        last_status, last_body = status, body
+    if last_body:
+        return last_status, last_body
+    return last_status, last_error
 
 
-def oembed(url: str) -> dict[str, str]:
+def oembed(url: str, page: str = "") -> dict[str, str]:
     host = host_of(url)
     endpoints = []
+    discovered = oembed_href(page)
+    if discovered:
+        endpoints.append(discovered)
     if host.endswith("tiktok.com"):
         endpoints.append("https://www.tiktok.com/oembed?url=" + urllib.parse.quote(url, safe=""))
-    if host.endswith("youtube.com") or host == "youtu.be":
+    if host.endswith("youtube.com") or host.endswith("youtube-nocookie.com") or host == "youtu.be":
         endpoints.append("https://www.youtube.com/oembed?url=" + urllib.parse.quote(url, safe=""))
     out: dict[str, str] = {}
+    seen: set[str] = set()
     for endpoint in endpoints:
+        if endpoint in seen:
+            continue
+        seen.add(endpoint)
         status, body = fetch(endpoint, accept="application/json")
         if status != 200:
             continue
@@ -188,7 +258,8 @@ def oembed(url: str) -> dict[str, str]:
         out["title"] = str(data.get("title") or "").strip()
         out["author"] = str(data.get("author_name") or "").strip()
         out["image"] = str(data.get("thumbnail_url") or "").strip()
-        break
+        if out.get("title") or out.get("author"):
+            break
     return {k: v for k, v in out.items() if v}
 
 
@@ -211,11 +282,12 @@ def preview(url: str) -> dict[str, Any]:
         empty["error"] = "not an http(s) url"
         return empty
     status, body = fetch(source)
-    meta = parse_meta(body) if status and "<" in body else {}
-    extra = oembed(source)
-    title = extra.get("title") or ""
-    caption = ""
-    author = extra.get("author") or ""
+    meta = parse_meta(body) if status and "<" in (body or "") else {}
+    ld = parse_json_ld(body) if status and "<" in (body or "") else {}
+    extra = oembed(source, body if status else "")
+    title = extra.get("title") or ld.get("title") or ""
+    caption = ld.get("caption") or ""
+    author = extra.get("author") or ld.get("author") or ""
     image = extra.get("image") or _first(meta, "og:image", "twitter:image")
     site = _first(meta, "og:site_name") or host_of(source)
 
@@ -226,7 +298,7 @@ def preview(url: str) -> dict[str, Any]:
         author = author or ig_author
     else:
         title = title or _first(meta, "og:title", "twitter:title", "title")
-        caption = _first(meta, "og:description", "description", "twitter:description")
+        caption = caption or _first(meta, "og:description", "description", "twitter:description")
         author = author or _first(meta, "author", "article:author")
 
     canonical = _first(meta, "og:url") or source
