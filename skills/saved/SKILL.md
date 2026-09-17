@@ -39,11 +39,15 @@ Never print `NOTION_API_KEY`. Never reuse another install's database IDs.
 ## Capture
 
 ```bash
-python3 /var/lib/hermes/scripts/notion_ideas.py capture --title "..." --source "..." --content "..."
+python3 /var/lib/hermes/scripts/preview_link.py "<url>"
+python3 /var/lib/hermes/scripts/notion_ideas.py capture --from-url "<url>" --topic "..."
 ```
 
-Search first if they resent a link. Default status is `Inbox`. See
-`references/notion-chat-capture.md` and `references/link-capture-preview-reminders.md`.
+Search first if they resent a link. A URL is not a title: run `preview_link.py`
+(or `capture --from-url`) so the vault gets the public caption, author, and
+what the post is about. That is metadata, not a watched video. Default status
+is `Inbox`. See `references/notion-chat-capture.md` and
+`references/link-capture-preview-reminders.md`.
 
 ## Later vs this week
 

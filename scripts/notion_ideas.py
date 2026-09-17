@@ -21,6 +21,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import preview_link
+
 STATE_NAME = "weekly-picks-state.json"
 SAVED_CONTEXT_NAME = "saved-context.json"
 PICKS_CONFIG_NAME = "weekly-picks.json"
@@ -621,6 +623,11 @@ def ensure_topic_options(config: dict[str, str], topics: list[str]) -> None:
 
 
 def capture(args: argparse.Namespace, config: dict[str, str]) -> dict[str, Any]:
+    from_url = str(getattr(args, "from_url", None) or "").strip()
+    source = (getattr(args, "source", None) or getattr(args, "url", None) or from_url or "") or ""
+    if from_url or (str(source).startswith("http") and not (str(getattr(args, "content", "") or "").strip() or getattr(args, "content_file", None))):
+        preview_link.apply_to_capture(args, preview_link.preview(from_url or source))
+        source = (getattr(args, "source", None) or getattr(args, "url", None) or source or "") or ""
     content = args.content or ""
     if args.content_file:
         if args.content_file == "-":
@@ -634,7 +641,7 @@ def capture(args: argparse.Namespace, config: dict[str, str]) -> dict[str, Any]:
         item = {
             "id": new_local_id(),
             "url": "",
-            "title": args.title,
+            "title": args.title or source or "untitled",
             "status": args.status,
             "type": args.type,
             "topics": topics,
@@ -653,7 +660,7 @@ def capture(args: argparse.Namespace, config: dict[str, str]) -> dict[str, Any]:
     if not args.dry_run:
         ensure_topic_options(config, topics)
     props: dict[str, Any] = {
-        TITLE_PROP: {"title": rich_text(args.title)},
+        TITLE_PROP: {"title": rich_text(args.title or source or "untitled")},
         "Status": {"select": {"name": args.status}},
         "Tipo": {"select": {"name": args.type}},
         "Capturado em": {"date": {"start": datetime.now(timezone.utc).date().isoformat()}},
@@ -1080,7 +1087,7 @@ def parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True)
 
     cap = sub.add_parser("capture", help="Create one item in the Ideias database")
-    cap.add_argument("title")
+    cap.add_argument("title", nargs="?", default="", help="Used as-is when set; otherwise filled from the public caption")
     cap.add_argument("--content", default="")
     cap.add_argument("--content-file", help="Read full content from a file, or - for stdin")
     cap.add_argument("--type", choices=TYPE_OPTIONS, default="Ideia")
@@ -1088,6 +1095,7 @@ def parser() -> argparse.ArgumentParser:
     cap.add_argument("--topic", action="append", help="Topic; can be repeated or comma-separated")
     cap.add_argument("--source", default="")
     cap.add_argument("--url", dest="url", default="", help="Alias for --source")
+    cap.add_argument("--from-url", dest="from_url", default="", help="Fetch public caption/title, then capture")
     cap.add_argument("--next-action", default="")
     cap.add_argument("--dry-run", action="store_true")
 

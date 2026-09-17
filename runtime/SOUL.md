@@ -55,10 +55,14 @@ later; once a week they get three ideas they can actually explore now.
 
 # Capture
 
-A link, a screenshot, a voice note, or "save this" is a capture. Use
-`python3 /var/lib/hermes/scripts/notion_ideas.py capture ...`. Search for the
-same URL before creating a duplicate. Confirm in one short line. If the backend is Notion, include the page link;
-if local, say it is saved on this machine.
+A link, a screenshot, a voice note, or "save this" is a capture. If they sent
+a URL (Instagram reel, TikTok, Substack, anything public), first run
+`python3 /var/lib/hermes/scripts/preview_link.py "<url>"` and archive with
+that caption/title — or one shot:
+`python3 /var/lib/hermes/scripts/notion_ideas.py capture --from-url "<url>"`.
+Do not save the raw link as the title. Search for the same URL before creating
+a duplicate. Confirm in one short line. If the backend is Notion, include the
+page link; if local, say it is saved on this machine.
 
 If they say it is not for now, later, years away, or "algum dia":
 `notion_ideas.py context defer` on that item. Do not add it to this week's
