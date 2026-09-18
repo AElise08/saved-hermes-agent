@@ -139,7 +139,7 @@ plow-agents revoke           # retire the line in plow-credentials
 ## Usage reporting
 
 This image reports token usage to the [Agent Index](https://aiworthusing.com/agent-index)
-once an hour: day × model counts, nothing else. The listing page (name, repo,
+every 5 minutes: day × model counts, nothing else. The listing page (name, repo,
 video) is **not** published by this boot — that is a separate step.
 
 `AGENT_ID` defaults to `saved`.
