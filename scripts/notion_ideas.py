@@ -110,11 +110,26 @@ def hermes_home() -> Path:
     return Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
 
 
+TOKEN_NAME = "notion-token"
+
+
+def token_path() -> Path:
+    return hermes_home() / ".saved" / TOKEN_NAME
+
+
 def load_key() -> str:
     key = os.environ.get("NOTION_API_KEY")
     if key:
         return key.strip()
     home = hermes_home()
+    stored = token_path()
+    if stored.exists():
+        try:
+            value = stored.read_text(encoding="utf-8", errors="replace").strip()
+        except OSError:
+            value = ""
+        if value:
+            return value
     candidates = [home / ".env", home / ".hermes" / ".env"]
     candidates.extend(sorted(home.glob(".env.bak*"), reverse=True))
     for env_path in candidates:
@@ -328,7 +343,7 @@ def setup_status() -> dict[str, Any]:
         "next": (
             "This owner's Notion is connected. Capture and weekly picks can run."
             if ready
-            else "Ask one line in their language, then wait. PT: Guardar aqui na máquina, ou no Notion? EN: Save here on this machine, or in Notion? After they pick: máquina/local → setup-local. Notion → host .env token + setup-from-url with THEIR database link."
+            else "Ask one line in their language, then wait. PT: Guardar aqui na máquina, ou no Notion? EN: Save here on this machine, or in Notion? After they pick: máquina/local → setup-local. Notion → setup-token with THEIR ntn_ secret (chat, cloud) or host .env token (local Docker), then setup-from-url with THEIR database link."
         ),
     }
 
@@ -358,6 +373,29 @@ def setup_local(_args: argparse.Namespace | None = None) -> dict[str, Any]:
         "vault_path": str(vault_path()),
         "items": len(load_vault()),
     }
+
+
+def setup_token(args: argparse.Namespace) -> dict[str, Any]:
+    """Store the owner's Notion secret from chat (cloud agents have no .env).
+
+    Never echo the secret back. File is 0600 under the agent home volume.
+    """
+    secret = (args.key or "").strip()
+    if not (secret.startswith("ntn_") or secret.startswith("secret_")) or len(secret) < 20:
+        raise NotionError(
+            0,
+            "invalid_token",
+            "That does not look like a Notion internal integration secret (it starts with ntn_). "
+            "Create one at notion.so/my-integrations and send the secret itself, not the database link.",
+        )
+    path = token_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(secret + "\n", encoding="utf-8")
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+    return {"ok": True, "has_token": True, "token_path": str(path)}
 
 
 def setup_write(args: argparse.Namespace) -> dict[str, Any]:
@@ -1137,16 +1175,16 @@ def setup_guide(args: argparse.Namespace) -> dict[str, Any]:
     if pt:
         steps = [
             "A forma mais rápida é guardar aqui na máquina: me diz 'aqui' e eu ativo agora, sem conta nem senha.",
-            "Se preferir o Notion: cria uma integração interna em notion.so/my-integrations (bot interno chamado Saved, com leitura, atualização e inserção) e copia o segredo.",
+            "Se preferir o Notion: cria uma integração interna em notion.so/my-integrations (bot interno chamado Saved, com leitura, atualização e inserção) e copia o segredo (começa com ntn_).",
             "No TEU banco de dados do Notion: ... → Connections → adiciona o Saved.",
-            "Cola o segredo no .env do computador (nunca aqui no chat) e me manda o link do banco aberto como página inteira.",
+            "Me manda o segredo aqui no chat (eu guardo sem repetir) e depois o link do banco aberto como página inteira. No Docker local, o segredo pode ir no .env em vez do chat.",
         ]
     else:
         steps = [
             "Fastest is saving on this machine: tell me 'here' and I switch it on now, no account needed.",
-            "For Notion: create an internal integration at notion.so/my-integrations (bot named Saved, with read, update and insert) and copy the secret.",
+            "For Notion: create an internal integration at notion.so/my-integrations (bot named Saved, with read, update and insert) and copy the secret (starts with ntn_).",
             "In YOUR Notion database: ... → Connections → add Saved.",
-            "Paste the secret into the computer's .env (never here in chat) and send me the database link opened as a full page.",
+            "Send me the secret here in chat (I store it without repeating it), then the database link opened as a full page. On local Docker, the secret can go in .env instead of chat.",
         ]
     return {"locale": "pt" if pt else "en", "local_first": True, "steps": steps}
 
@@ -1231,6 +1269,9 @@ def parser() -> argparse.ArgumentParser:
     sg = sub.add_parser("setup-guide", help="Step-by-step vault choice in the owner's language (no secrets)")
     sg.add_argument("--locale", choices=("pt", "en"), default="pt")
 
+    st = sub.add_parser("setup-token", help="Store the Notion secret sent in chat (cloud agents have no .env)")
+    st.add_argument("key", help="The ntn_ secret from notion.so/my-integrations")
+
     ctx = sub.add_parser("context", help="Remember owner timeline and defer items from chat")
     ctx_sub = ctx.add_subparsers(dest="context_command", required=True)
     ctx_sub.add_parser("show", help="Show remembered owner context for weekly picks")
@@ -1277,6 +1318,8 @@ def main() -> int:
             result = context_show(args) if args.context_command == "show" else context_remember(args)
         elif args.command == "setup-guide":
             result = setup_guide(args)
+        elif args.command == "setup-token":
+            result = setup_token(args)
         else:
             config = load_config()
             if args.command == "capture":

@@ -51,16 +51,20 @@ Then capture as usual. Confirm without a Notion link — there isn't one.
 
 ## B. Their Notion
 
-**Never ask them to paste the token into chat.** Host `.env` +
-`compose.override.yml` (see the README).
-
 They create an internal integration at https://www.notion.so/my-integrations,
-share **their** database (`...` → Connections), then send the **database** URL:
+share **their** database (`...` → Connections), then send the secret and the
+**database** URL:
 
 ```bash
+python3 /var/lib/hermes/scripts/notion_ideas.py setup-token "<their-ntn-secret>"
 python3 /var/lib/hermes/scripts/notion_ideas.py setup-from-url "<their-database-url>"
 python3 /var/lib/hermes/scripts/notion_ideas.py doctor
 ```
+
+On cloud / one-click deploy there is no host `.env`, so the secret comes
+through chat — store it with `setup-token` (0600 file, never repeated back)
+and move on. On local Docker the secret may go in the host `.env` via
+`compose.override.yml` instead (see the README).
 
 Required properties: `Name` (title), `Conteúdo` (rich_text), `Status` (select:
 Inbox, Explorar, Em andamento, Concluída, Arquivada), `Tipo` (select: Ideia,

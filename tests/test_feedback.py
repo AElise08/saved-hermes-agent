@@ -16,9 +16,11 @@ from notion_ideas import (  # noqa: E402
     NotionError,
     capture,
     feedback,
+    load_key,
     load_state,
     setup_guide,
     setup_local,
+    setup_token,
     weekly_picks,
 )
 
@@ -91,7 +93,31 @@ class FeedbackTests(unittest.TestCase):
             guide = setup_guide(Namespace(locale=locale))
             self.assertTrue(guide["local_first"])
             self.assertGreaterEqual(len(guide["steps"]), 3)
-            self.assertNotIn("ntn_", json.dumps(guide))
+            self.assertNotRegex(json.dumps(guide), r"ntn_[A-Za-z0-9]{10,}")
+
+
+class SetupTokenTests(unittest.TestCase):
+    def test_chat_secret_is_stored_private_and_never_echoed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"HERMES_HOME": tmp}, clear=False):
+                os.environ.pop("NOTION_API_KEY", None)
+                secret = "ntn_" + "x" * 40
+                out = setup_token(Namespace(key=secret))
+                self.assertTrue(out["has_token"])
+                self.assertNotIn(secret, json.dumps(out))
+                path = Path(out["token_path"])
+                self.assertTrue(path.exists())
+                self.assertEqual(path.read_text(encoding="utf-8").strip(), secret)
+                if hasattr(os, "chmod"):
+                    self.assertEqual(oct(path.stat().st_mode & 0o777), "0o600")
+                self.assertEqual(load_key(), secret)
+
+    def test_non_secret_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"HERMES_HOME": tmp}, clear=False):
+                for bad in ("https://www.notion.so/abc123", "short", ""):
+                    with self.assertRaises(NotionError):
+                        setup_token(Namespace(key=bad))
 
 
 if __name__ == "__main__":

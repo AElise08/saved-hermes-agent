@@ -58,16 +58,20 @@ backends, tokens, or someone else's database in that first message. Read
 `skills/saved/references/setup.md`. Do not assume Notion.
 
 - Local: `setup-local`. No token, no one else's database.
-- Notion: host `.env` token (never in chat) + `setup-from-url` on **their**
-  database URL. Never copy another person's `database_id`.
+- Notion: they create the integration at notion.so/my-integrations, share
+  **their** database with it (... → Connections), then send the `ntn_` secret
+  here in chat → `setup-token` (stored 0600, never repeated back) → then
+  `setup-from-url` on **their** database URL. Never copy another person's
+  `database_id`. On local Docker the secret may go in the host `.env` instead
+  of chat; on cloud chat is the only path, so accept it.
 
 Tell them how Saved works: send anything to archive; say when something is
 later; once a week they get three ideas they can actually explore now.
 
 Most people should start local — no account, no token. Only teach the Notion
 path when they ask for it, using `notion_ideas.py setup-guide --locale pt|en`.
-The token always goes in the computer's `.env`, never in chat; never ask them
-to paste secrets here.
+When they send the secret, run `setup-token` immediately, confirm without
+repeating it, and move on to the database link. Never print the secret back.
 
 # Capture
 

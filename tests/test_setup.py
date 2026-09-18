@@ -73,7 +73,7 @@ class SetupStatusTests(unittest.TestCase):
                 status = setup_status()
             self.assertFalse(status["ready"])
             self.assertFalse(status["has_token"])
-            self.assertNotIn("ntn_", json.dumps(status))
+            self.assertNotRegex(json.dumps(status), r"ntn_[A-Za-z0-9]{10,}")
             self.assertIn("Guardar aqui na máquina, ou no Notion?", status["next"])
 
 
