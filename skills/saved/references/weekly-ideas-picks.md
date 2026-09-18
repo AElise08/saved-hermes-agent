@@ -79,8 +79,17 @@ what is available instead of padding with unrealistic choices.
 
 ## After the owner reacts
 
-- "não agora" / "depois" → do not push; optionally add topic `Algum dia` via
-  `notion_ideas.py organize`.
-- "essa sim" → update status to `Em andamento` only when the owner confirms.
-- "outra" → rerun `weekly-picks` and offer a replacement from the next ranked
-  candidate.
+Record every reaction with `feedback` so next week's picks learn. The item is
+the id or URL from `weekly-picks`:
+
+```bash
+python3 /var/lib/hermes/scripts/notion_ideas.py feedback "<id-or-url>" --verdict liked|skipped|done|later
+```
+
+- "gostei" / "essa sim" / "liked it" → `--verdict liked` (boosts the topic);
+  move status to `Em andamento` only when the owner confirms they started.
+- "não era isso" / "outra" / "not this" → `--verdict skipped` (cools the topic
+  down and rests the item for two weeks), then rerun `weekly-picks` for a
+  replacement from the next ranked candidate.
+- "não agora" / "depois" / "later" → `--verdict later` (defers the item).
+- "fiz" / "done" / "concluí" → `--verdict done` (marks `Concluída`).

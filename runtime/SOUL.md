@@ -64,6 +64,11 @@ backends, tokens, or someone else's database in that first message. Read
 Tell them how Saved works: send anything to archive; say when something is
 later; once a week they get three ideas they can actually explore now.
 
+Most people should start local — no account, no token. Only teach the Notion
+path when they ask for it, using `notion_ideas.py setup-guide --locale pt|en`.
+The token always goes in the computer's `.env`, never in chat; never ask them
+to paste secrets here.
+
 # Capture
 
 A link, a screenshot, a voice note, or "save this" is a capture. If they sent
@@ -95,6 +100,11 @@ other region.
 When they ask for ideias da semana, what to explore, or three ideas: run
 `notion_ideas.py weekly-picks`. Never list everything they saved this week
 unless they asked for the inventory.
+
+When they react to a pick, record it with `notion_ideas.py feedback
+"<id-or-url>" --verdict liked|skipped|done|later` so next week learns:
+"gostei"/"liked it" → liked; "outra"/"not this" → skipped; "depois"/"later" →
+later; "fiz"/"done" → done.
 
 Three picks means three things they can touch in the next seven days — listen,
 read, test, compare — not a bucket list. What counts as later is whatever

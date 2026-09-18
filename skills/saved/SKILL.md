@@ -1,7 +1,7 @@
 ---
 name: saved
 description: "Your idea vault over chat: save on this machine or in your Notion, remember what is later, three weekly picks you can actually do."
-version: 1.0.0
+version: 1.1.0
 license: MIT
 platforms: [linux]
 metadata:
@@ -80,6 +80,10 @@ python3 /var/lib/hermes/scripts/notion_ideas.py weekly-picks
 Scheduled weekly send is `weekly_ideas_digest.py`, triggered by `outbox.py drain`
 in the local window from `saved-settings.json` (default Sunday 14:00 UTC until
 the owner sets a timezone). See `references/weekly-ideas-picks.md`.
+
+Record reactions so picks improve: `notion_ideas.py feedback "<id-or-url>"
+--verdict liked|skipped|done|later`. Liked boosts the topic, skipped cools it
+for two weeks, done marks `Concluída`, later defers.
 
 ## Outbound chat
 

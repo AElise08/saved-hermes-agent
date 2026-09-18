@@ -815,6 +815,87 @@ def recently_picked(item_id: str | None, state: dict[str, Any], weeks: int = 2) 
     return False
 
 
+FEEDBACK_VERDICTS = ("liked", "skipped", "done", "later")
+SKIP_COOLDOWN_DAYS = 14
+
+
+def feedback_store(state: dict[str, Any]) -> dict[str, Any]:
+    return state.setdefault("feedback", {"liked_topics": {}, "skipped_topics": {}, "skipped_ids": []})
+
+
+def feedback_skipped_recently(item_id: str | None, state: dict[str, Any], days: int = SKIP_COOLDOWN_DAYS) -> bool:
+    if not item_id:
+        return False
+    cutoff = datetime.now(timezone.utc).date() - timedelta(days=days)
+    fb = state.get("feedback") or {}
+    for entry in fb.get("skipped_ids", []):
+        try:
+            skipped_day = datetime.fromisoformat(str(entry.get("at", ""))[:10]).date()
+        except ValueError:
+            continue
+        if skipped_day >= cutoff and entry.get("id") == item_id:
+            return True
+    return False
+
+
+def apply_feedback_boost(item: dict[str, Any], state: dict[str, Any], score: int, reasons: list[str]) -> tuple[int, list[str]]:
+    fb = state.get("feedback") or {}
+    liked = fb.get("liked_topics") or {}
+    skipped = fb.get("skipped_topics") or {}
+    topics = {_fold(topic) for topic in (item.get("topics") or []) if str(topic).strip()}
+    if any(topic in liked for topic in topics):
+        score += 2
+        reasons.append("owner curtiu esse tema")
+    if any(topic in skipped for topic in topics):
+        score -= 3
+        reasons.append("owner pulou esse tema")
+    return score, reasons
+
+
+def feedback(args: argparse.Namespace, config: dict[str, str]) -> dict[str, Any]:
+    """Record the owner's reaction to a pick so future weekly-picks learn."""
+    ident = page_id(args.item)
+    items = list_items(config)
+    item = next((row for row in items if row.get("id") == ident), None)
+    if item is None:
+        raise NotionError(0, "not_found", f"No item {args.item} in this vault")
+    verdict = args.verdict
+    title = item.get("title") or ident
+    if verdict == "done":
+        updated = organize(
+            argparse.Namespace(page=ident, status="Concluída", type=None, add_topic=None, remove_topic=None, next_action=None),
+            config,
+        )
+        return {"feedback": "done", "item": updated["item"]}
+    if verdict == "later":
+        result = context_defer(
+            argparse.Namespace(page=ident, reason=(args.reason or "owner marcou como para depois").strip()),
+            config,
+        )
+        return {"feedback": "later", **result}
+    state = load_state()
+    fb = feedback_store(state)
+    topics = sorted({_fold(topic) for topic in (item.get("topics") or []) if str(topic).strip()})
+    key = "liked_topics" if verdict == "liked" else "skipped_topics"
+    for topic in topics:
+        fb[key][topic] = int(fb[key].get(topic, 0)) + 1
+    if verdict == "skipped":
+        fb["skipped_ids"] = [entry for entry in fb.get("skipped_ids", []) if entry.get("id") != ident]
+        fb["skipped_ids"].append({"id": ident, "at": datetime.now(timezone.utc).isoformat()})
+        fb["skipped_ids"] = fb["skipped_ids"][-50:]
+    log = state.setdefault("feedback_log", [])
+    log.append({
+        "at": datetime.now(timezone.utc).isoformat(),
+        "id": ident,
+        "title": title,
+        "verdict": verdict,
+        "topics": topics,
+    })
+    state["feedback_log"] = log[-100:]
+    save_state(state)
+    return {"feedback": verdict, "id": ident, "title": title, "topics": topics}
+
+
 def item_blob(item: dict[str, Any]) -> str:
     return _fold(
         " ".join(
@@ -914,7 +995,11 @@ def weekly_picks(args: argparse.Namespace, config: dict[str, str]) -> dict[str, 
         if recently_picked(item.get("id"), state, weeks=args.cooldown_weeks):
             excluded.append({"id": item.get("id", ""), "title": item.get("title", ""), "reason": "escolhida nas últimas semanas"})
             continue
+        if feedback_skipped_recently(item.get("id"), state):
+            excluded.append({"id": item.get("id", ""), "title": item.get("title", ""), "reason": "owner pulou recentemente"})
+            continue
         score, reasons = week_feasible_score(item)
+        score, reasons = apply_feedback_boost(item, state, score, reasons)
         if score < 1:
             excluded.append({"id": item.get("id", ""), "title": item.get("title", ""), "reason": "pouco acionável nesta semana"})
             continue
@@ -1046,6 +1131,26 @@ def context_defer(args: argparse.Namespace, config: dict[str, str]) -> dict[str,
     return {"deferred": True, "item": updated["item"], "reason": reason}
 
 
+def setup_guide(args: argparse.Namespace) -> dict[str, Any]:
+    """Teach the vault choice in chat. Local-first; Notion token never goes in chat."""
+    pt = (args.locale or "pt").startswith("pt")
+    if pt:
+        steps = [
+            "A forma mais rápida é guardar aqui na máquina: me diz 'aqui' e eu ativo agora, sem conta nem senha.",
+            "Se preferir o Notion: cria uma integração interna em notion.so/my-integrations (bot interno chamado Saved, com leitura, atualização e inserção) e copia o segredo.",
+            "No TEU banco de dados do Notion: ... → Connections → adiciona o Saved.",
+            "Cola o segredo no .env do computador (nunca aqui no chat) e me manda o link do banco aberto como página inteira.",
+        ]
+    else:
+        steps = [
+            "Fastest is saving on this machine: tell me 'here' and I switch it on now, no account needed.",
+            "For Notion: create an internal integration at notion.so/my-integrations (bot named Saved, with read, update and insert) and copy the secret.",
+            "In YOUR Notion database: ... → Connections → add Saved.",
+            "Paste the secret into the computer's .env (never here in chat) and send me the database link opened as a full page.",
+        ]
+    return {"locale": "pt" if pt else "en", "local_first": True, "steps": steps}
+
+
 def doctor(config: dict[str, str]) -> dict[str, Any]:
     if is_local(config):
         path = vault_path()
@@ -1117,6 +1222,15 @@ def parser() -> argparse.ArgumentParser:
     wk.add_argument("--mark", action="store_true", help="Record picks so they are not repeated soon")
     wk.add_argument("--dry-run", action="store_true")
 
+    fb = sub.add_parser("feedback", help="Record the owner's reaction so future picks learn")
+    fb.add_argument("item", help="Item id or URL from weekly-picks")
+    fb.add_argument("--verdict", choices=FEEDBACK_VERDICTS, required=True,
+                    help="liked: boost the topic; skipped: cool it down; done: mark Concluída; later: defer")
+    fb.add_argument("--reason", default="")
+
+    sg = sub.add_parser("setup-guide", help="Step-by-step vault choice in the owner's language (no secrets)")
+    sg.add_argument("--locale", choices=("pt", "en"), default="pt")
+
     ctx = sub.add_parser("context", help="Remember owner timeline and defer items from chat")
     ctx_sub = ctx.add_subparsers(dest="context_command", required=True)
     ctx_sub.add_parser("show", help="Show remembered owner context for weekly picks")
@@ -1161,6 +1275,8 @@ def main() -> int:
             result = setup_local(args)
         elif args.command == "context" and args.context_command in ("show", "remember"):
             result = context_show(args) if args.context_command == "show" else context_remember(args)
+        elif args.command == "setup-guide":
+            result = setup_guide(args)
         else:
             config = load_config()
             if args.command == "capture":
@@ -1171,6 +1287,8 @@ def main() -> int:
                 result = organize(args, config)
             elif args.command == "weekly-picks":
                 result = weekly_picks(args, config)
+            elif args.command == "feedback":
+                result = feedback(args, config)
             elif args.command == "context":
                 result = context_defer(args, config)
             else:

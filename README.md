@@ -117,7 +117,8 @@ Text the line you minted.
    what *you* said, not a baked-in list of life events.
 4. **Once a week** (default Sunday 14:00 in your timezone, UTC until you set
    one) Saved texts three ideas you can actually explore now — not the whole
-   archive.
+   archive. React and it learns: “gostei” boosts the topic, “outra” rests it
+   for two weeks, “depois” defers it, “fiz” marks it done.
 
 Set timezone in `saved-settings.json` (`timezone`, IANA name) or with `TZ` in
 `compose.override.yml`. The JSON value wins if both are set. Chat language
