@@ -5,6 +5,10 @@
 # a moving tag would substitute unreviewed code under a live credential.
 FROM public.ecr.aws/e1h7x4a2/plow-cloud-agents:base-ef0019372ff8bca593611b31ebd2e08f9f1458ff@sha256:a8a2f97ad78b8192d80a984dce81d3bf5a9a883d18cb7b677704913a09b56aee
 
+# Cloud deployments run the image without compose.yml. Keep the reporting
+# identity in the image so every installation reports to the Saved listing.
+ENV AGENT_ID=saved
+
 COPY runtime/SOUL.md /var/lib/hermes/SOUL.md
 COPY LICENSE NOTICE /usr/share/doc/saved/
 
